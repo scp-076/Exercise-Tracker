@@ -117,8 +117,10 @@ app.post('/api/users', async (req, res) => {
       res.send('User with this username already exists');
       return false;
     }
-    const result = await createUser(req.body.username);
-    res.send(result);
+    if (req.body.username.length) {
+      const result = await createUser(req.body.username);
+      res.send(result);
+    } else res.send('Incorrect user name');
   } catch (e) {console.error(e)};
 });
 
