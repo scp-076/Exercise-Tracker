@@ -1,10 +1,7 @@
-PRAGMA foreign_keys = ON;
-PRAGMA foreign_keys = 0;
-
 CREATE TABLE IF NOT EXISTS users (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	_id TEXT,
-	username TEXT
+	_id TEXT UNIQUE,
+	username TEXT UNIQUE
 );
 
 CREATE TABLE IF NOT EXISTS exercises (
@@ -12,7 +9,5 @@ CREATE TABLE IF NOT EXISTS exercises (
     _id TEXT,
 	description TEXT,
     duration INTEGER,
-    date INTEGER,
-
-    FOREIGN KEY (id) REFERENCES users(id) ON DELETE CASCADE
+    date INTEGER
 );

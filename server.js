@@ -6,7 +6,11 @@ const sqlite3 = require("sqlite3");
 const fs = require("fs");
 const path = require("path");
 const bp = require('body-parser');
+const {isValidDate} = require('./utils');
 require('dotenv').config();
+
+const User = require('./User');
+const Exercises = require('./Exercises');
 
 app.use(bp.json());
 app.use(bp.urlencoded({ extended: true }));
@@ -14,7 +18,6 @@ app.use(cors());
 app.use(express.static('public'));
 
 const DB_SQL_PATH = path.join(__dirname,"mydb.sql");
-
 
 const myDB = new sqlite3.Database('./my.db');
 const SQL3 = {
@@ -34,51 +37,8 @@ const SQL3 = {
 const initSQL = fs.readFileSync(DB_SQL_PATH,"utf-8");
 (async () => await SQL3.exec(initSQL))();
 
-function guidGenerator() {
-    const S4 = function() {
-      return (((1+Math.random())*0x10000)|0).toString(16).substring(1);
-    };
-    return (S4()+S4()+S4()+S4()+S4()+S4()+S4()+S4());
-}
-
-function isValidDate(dateString) {
-    const regEx = /^\d{4}-\d{2}-\d{2}$/;
-    if(!dateString.match(regEx)) return false;  // Invalid format
-    const d = new Date(dateString);
-    const dNum = d.getTime();
-    if(!dNum && dNum !== 0) return false; // NaN value, Invalid date
-    return d.toISOString().slice(0,10) === dateString;
-}
-
-async function getUsers() {
-  return await SQL3.all('SELECT username, _id from users');
-}
-
-async function getUser(prop, value) {
-  return await SQL3.get(`SELECT username, _id FROM users WHERE ${prop}=?`, value);
-}
-
-async function createUser(username) {
-  await SQL3.run('INSERT INTO users (username, _id) VALUES (?, ?);', username, guidGenerator());
-  return await getUser('username', username);
-}
-
-async function createExercise(id, description, duration, date) {
-  await SQL3.run('INSERT INTO exercises (_id, description, duration, date) VALUES (?, ?, ?, ?);', id, description, duration, date.length ? new Date(date).getTime() : new Date().getTime());
-  const exercises = await getExercises(id);
-  const user = await getUser('_id', id);
-  user.exercises = [...exercises];
-  return user;
-}
-
-async function getExercises(id, from, to, limit) {
-  if (from || to || limit) {
-    const fromparsed = from.length && new Date(from).getTime();
-    const toparsed = to.length && new Date(to).getTime();
-    return await SQL3.all(`SELECT description, duration, date FROM exercises WHERE _id=? AND date >= ? AND date <= ? LIMIT ?`, id, fromparsed, toparsed, limit);
-  }
-  return await SQL3.all('SELECT description, duration, date FROM exercises WHERE _id=?', id);
-}
+const user = new User(SQL3);
+const exercises = new Exercises(SQL3, user);
 
 app.get('/', (req, res) => {
   res.sendFile(__dirname + '/views/index.html');
@@ -86,56 +46,67 @@ app.get('/', (req, res) => {
 
 app.get('/api/users', async (req, res) => {
   try {
-    const result = await getUsers();
+    const result = await user.getUsers();
     res.send(result);
   } catch (e) {console.error(e)}
 });
 
 app.get('/api/users/:_id/logs', async (req, res) => {
-  const id = req.url.split('/')[3];
+  const id = req.params && req.params['_id'];
   try {
-    const user = await getUser('_id', id);
+    const currentUser = await user.getUser('_id', id);
+    if (!currentUser) {
+      res.status('400');
+      res.send('Incorrect user id');
+      return false;
+    }
     if (req.query.FROM || req.query.TO || req.query.LIMIT) {
-      const exercises = await getExercises(id, req.query.FROM, req.query.TO, req.query.LIMIT);
-      exercises.forEach(ex => ex.date = new Date(ex.date).toDateString());
-      user.log = [...exercises];
-      res.send(user);
+      const currentUserExercises = await exercises.getExercises(id, req.query.FROM, req.query.TO, req.query.LIMIT);
+      currentUserExercises.forEach(ex => ex.date = new Date(ex.date).toDateString());
+      currentUser.log = [...currentUserExercises];
+      res.send(currentUser);
       return true;
     }
-    const exercises = await getExercises(id);
-    exercises.forEach(ex => ex.date = new Date(ex.date).toDateString());
-    user.count = exercises.length;
-    user.log = [...exercises];
-    res.send(user);
+    const currentUserExercises = await exercises.getExercises(id);
+    currentUserExercises.forEach(ex => ex.date = new Date(ex.date).toDateString());
+    currentUser.count = currentUserExercises.length;
+    currentUser.log = [...currentUserExercises];
+    res.send(currentUser);
   } catch (e) {console.error(e)}
 });
 
 app.post('/api/users', async (req, res) => {
   try {
-    const user = await getUser('username', req.body.username);
-    if (user) {
-      res.send('User with this username already exists');
-      return false;
-    }
-    if (req.body.username.length) {
-      const result = await createUser(req.body.username);
+    if (req.body && req.body.username.length) {
+      const result = await user.createUser(req.body.username);
       res.send(result);
     } else res.send('Incorrect user name');
-  } catch (e) {console.error(e)};
+  } catch (e) {
+      res.status('400');
+      res.send('Username is already taken');
+      console.error(e);
+  };
 });
 
 app.post('/api/users/:_id/exercises', async (req, res) => {
-  const id = req.url.split('/')[3];
+  const id = req.body && req.body[':_id'];
+  if (id.length < 32) {
+    res.status('400');
+    res.send('Incorrect id');
+    return false;
+  }
   try {
-    const user = getUser('_id', id);
-    if (req.body.date && !isValidDate(req.body.date)) {
+    const currentUser = user.getUser('_id', id);
+    if (req.body && req.body.date && !isValidDate(req.body.date)) {
+      res.status('400');
       res.send('Invalid date format, validation pattern is yyyy-mm-dd');
       return false;
     }
-    if (!user || !req.body.description || !req.body.duration) {
+    if (!currentUser || !req.body.description.trim().length || !req.body.duration.trim().length) {
+      res.status('400');
       res.send('You have to fill all form fields');
     }
-    const result = await createExercise(id, req.body.description, req.body.duration, req.body.date);
+    const result = await exercises.createExercise(id, req.body.description, req.body.duration, req.body.date);
     res.send(result);
   } catch (e) {console.error(e)}
 });
