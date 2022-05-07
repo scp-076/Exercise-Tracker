@@ -56,7 +56,7 @@ app.get('/api/users/:_id/logs', async (req, res) => {
   try {
     const currentUser = await user.getUser('_id', id);
     if (!currentUser) {
-      res.status('400');
+      res.status('404');
       res.send('Incorrect user id');
       return false;
     }
@@ -82,28 +82,28 @@ app.post('/api/users', async (req, res) => {
       res.send(result);
     } else res.send('Incorrect user name');
   } catch (e) {
-      res.status('400');
+      res.status('404');
       res.send('Username is already taken');
       console.error(e);
   };
 });
 
 app.post('/api/users/:_id/exercises', async (req, res) => {
-  const id = req.body && req.body[':_id'];
-  if (id.length < 32) {
-    res.status('400');
+  const id = req.params && req.params['_id'];
+  if (!id) {
+    res.status('404');
     res.send('Incorrect id');
     return false;
   }
   try {
     const currentUser = user.getUser('_id', id);
     if (req.body && req.body.date && !isValidDate(req.body.date)) {
-      res.status('400');
+      res.status('404');
       res.send('Invalid date format, validation pattern is yyyy-mm-dd');
       return false;
     }
     if (!currentUser || !req.body.description.trim().length || !req.body.duration.trim().length) {
-      res.status('400');
+      res.status('404');
       res.send('You have to fill all form fields');
     }
     const result = await exercises.createExercise(id, req.body.description, req.body.duration, req.body.date);
