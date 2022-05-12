@@ -89,14 +89,22 @@ app.post('/api/users', async (req, res) => {
 });
 
 app.post('/api/users/:_id/exercises', async (req, res) => {
-  const id = req.params && req.params['_id'];
+  const id = req.params && req.params['_id'], description = req.body.description, duration = req.body.duration, date = req.body.date;
   if (!id) {
     res.status('404');
     res.send('Incorrect id');
     return false;
   }
+  if (!description) {
+    res.status('404');
+    res.send('description field is required');
+  }
+  if (!duration || Number.isNaN(duration) || Number(duration) < 0) {
+    res.status('404');
+    res.send('duration field is required and should be a number');
+  }
   try {
-    const currentUser = user.getUser('_id', id);
+    const currentUser = await user.getUser('_id', id);
     if (req.body && req.body.date && !isValidDate(req.body.date)) {
       res.status('404');
       res.send('Invalid date format, validation pattern is yyyy-mm-dd');
@@ -104,9 +112,9 @@ app.post('/api/users/:_id/exercises', async (req, res) => {
     }
     if (!currentUser || !req.body.description.trim().length || !req.body.duration.trim().length) {
       res.status('404');
-      res.send('You have to fill all form fields');
+      res.send('Check if all required fields are not empty and user id is correct');
     }
-    const result = await exercises.createExercise(id, req.body.description, req.body.duration, req.body.date);
+    const result = await exercises.createExercise(id, description, duration, date || new Date());
     res.send(result);
   } catch (e) {console.error(e)}
 });

@@ -12,10 +12,17 @@ module.exports = class Exercises {
         return await this.SQL3.all('SELECT description, duration, date FROM exercises WHERE _id=?', id);
     }
     async createExercise(id, description, duration, date) {
-        await this.SQL3.run('INSERT INTO exercises (_id, description, duration, date) VALUES (?, ?, ?, ?);', id, description, duration, date.length ? new Date(date).getTime() : new Date().getTime());
-        const exercises = await this.getExercises(id);
-        const user = await this.userClass.getUser('_id', id);
-        user.exercises = [...exercises];
-        return user;
+        try {
+            await this.SQL3.run('INSERT INTO exercises (_id, description, duration, date) VALUES (?, ?, ?, ?);', id, description, duration,  new Date(date).getTime());
+            const exercises = await this.getExercises(id);
+            const user = await this.userClass.getUser('_id', id);
+            if (user && exercises) {
+                user.exercises = [...exercises];
+                return user;
+            } else return false;
+        } catch (e) {
+            console.error(e);
+            return false;
+        }
     }
 }
